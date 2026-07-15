@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Опрос ПУ — аналитика собираемости</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="login" class="login-wrap hidden">
+  <div class="login-card">
+    <h1>Опрос ПУ</h1>
+    <p class="muted">Аналитика собираемости приборов учёта</p>
+    <input id="l_login" placeholder="Логин" autocomplete="username">
+    <input id="l_pass" type="password" placeholder="Пароль" autocomplete="current-password">
+    <button class="btn primary" onclick="doLogin()">Войти</button>
+    <div id="l_err" class="err"></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <div class="brand">⚡ Опрос ПУ</div>
+    <nav id="tabs"></nav>
+    <div class="userbox">
+      <select id="resFilter" onchange="onResChange()" title="Фильтр по РЭС"></select>
+      <span id="userName" class="muted"></span>
+      <button class="btn small" onclick="doLogout()">Выйти</button>
+    </div>
+  </header>
+  <main id="content"></main>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

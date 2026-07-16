@@ -96,10 +96,46 @@ static/
 
 1. Согласование добавления новых ПУ чекбоксами (сейчас автодобавление + вкладка
    «Изменения»): нужна таблица pending + UI подтверждения для загрузчика.
-2. Интеграция авторизации с Платформой: фронт уже слушает
-   `postMessage {type:'platform-auth', token}` — нужен обмен Keycloak-токена на сессию.
+2. ~~Интеграция авторизации с Платформой~~ — СДЕЛАНО (см. «Интеграция с Платформой»
+   ниже и журнал 2026-07-16).
 3. Экспорт отчётов в Word (сейчас только Excel).
 4. Автоочистка старых xlsx и MeterState при росте базы (отчёты по датам сохранять).
+
+## Интеграция с Платформой (SUE_system, Keycloak SSO)
+
+Приложение зарегистрировано в реестре Платформы (`SUE_system/src/config/apps.js`,
+id `opros`, иконка `OprosTile` в `appIcons.jsx`). Домен Amvera:
+`opros-piramida-ashinoff.amvera.io`.
+
+**Схема (как у СИЗ/Светлячка):** Keycloak решает «кто ты» (по **email**) + «пускать
+ли» (realm-роль **`opros-user`**). Приложение решает «что можно» — роль/РЭС из своей
+БД по email, НЕ из токена. Один пользователь в Keycloak = одна роль доступа + email.
+
+- Бэк: `app/config.py` (env), `app/keycloak.py` (проверка токена по JWKS: подпись/iss/
+  exp/azp==web-desktop, aud не требуем), `auth.resolve_platform_user()` (гейт `opros-user`,
+  связка по keycloak_id→email), эндпоинт `POST /api/auth/platform` (обмен на свою сессию,
+  формат как `/api/login`). CSP `frame-ancestors` — middleware в `main.py`.
+- Фронт (`static/app.js`): слушает `postMessage {type:'platform-auth',token}` ТОЛЬКО от
+  `PLATFORM_ORIGIN`, шлёт `{type:'app-ready'}` родителю, меняет токен на сессию, fallback
+  на обычный вход. Токен сессии хранится в `localStorage(opros_token)` и шлётся как
+  `Bearer` (чтобы работать во встроенном iframe, где Lax-cookie не уходит на XHR).
+- Env на Amvera для включения: `PLATFORM_SSO=true` (KEYCLOAK_ISSUER/JWKS_URL/AZP,
+  PLATFORM_ORIGIN, OPROS_ACCESS_ROLE имеют дефолты под наш realm). БД: у User добавлены
+  `email`, `keycloak_id` (лёгкая миграция `_ensure_user_columns` в `db.py`).
+- В учётках приложения (вкладка «Пользователи») проставить email = email в Keycloak.
+
+## Журнал изменений
+
+- **2026-07-16** — Полная интеграция с Платформой + фиксы. (1) БАГ ВХОДА: в
+  `static/app.js` обработчик `l_pass.onkeydown` возвращал `false` при любой клавише
+  кроме Enter → браузер отменял ввод символа → в поле пароля нельзя было печатать.
+  Исправлено (реагируем только на Enter, ничего не возвращаем). (2) Учётки: у User
+  добавлен `email` (+ `keycloak_id`), список сортируется по алфавиту (имя/логин,
+  casefold), в модалке и таблице «Пользователи» — поле/колонка Email. (3) SSO:
+  `config.py`, `keycloak.py`, `auth.resolve_platform_user`, `POST /api/auth/platform`,
+  CSP-middleware; фронт делает обмен токена и Bearer-авторизацию. `requirements.txt`:
+  `python-jose[cryptography]`. Платформа: `OprosTile` (фиолетовая пирамида) + запись
+  `opros` в `apps.js`, env `VITE_APP_OPROS_URL`.
 
 ## Грабли, на которые уже наступали
 

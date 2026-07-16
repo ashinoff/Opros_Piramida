@@ -52,6 +52,10 @@ class User(Base):
     role = Column(String, nullable=False, default="res")
     res_name = Column(String, nullable=True)   # для роли res — свой РЭС
     active = Column(Boolean, default=True)
+    # Платформа (SUE_system, Keycloak SSO): личность определяется по email,
+    # keycloak_id проставляется при первом входе через Платформу (разовая связка).
+    email = Column(String, nullable=True, index=True)
+    keycloak_id = Column(String, nullable=True, index=True)
 
 
 class Upload(Base):
@@ -143,5 +147,24 @@ class Task(Base):
     closed_comment = Column(Text, default="")
 
 
+def _ensure_user_columns():
+    """Лёгкая миграция: дозаполнить недостающие колонки users (email, keycloak_id)
+    и уникальный индекс по keycloak_id. Работает и на SQLite, и на PostgreSQL."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    if "users" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("users")}
+    with engine.begin() as conn:
+        if "email" not in cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR"))
+        if "keycloak_id" not in cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN keycloak_id VARCHAR"))
+        # NULL-ы в уникальном индексе считаются различными (и в SQLite, и в PG).
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_keycloak_id ON users (keycloak_id)"))
+
+
 def init_db():
     Base.metadata.create_all(engine)
+    _ensure_user_columns()

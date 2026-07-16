@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import init_db, SessionLocal, User, Upload, Meter, MeterState, Change, Task, DATA_DIR
-from . import auth, analytics, export
+from . import auth, analytics, export, config
 from .importer import run_import
 
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "50"))
@@ -21,6 +21,18 @@ MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "50"))
 app = FastAPI(title="Опрос ПУ", docs_url=None, redoc_url=None)
 init_db()
 auth.ensure_admin_exists()
+
+
+@app.middleware("http")
+async def _frame_ancestors(request: Request, call_next):
+    """Разрешаем встраивание приложения в iframe Платформы (только её origin).
+    Только заголовок ответа — авторизацию не трогает."""
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = \
+        f"frame-ancestors 'self' {config.PLATFORM_ORIGIN}"
+    if "x-frame-options" in response.headers:
+        del response.headers["x-frame-options"]
+    return response
 
 
 def db_session():
@@ -59,8 +71,23 @@ def logout(request: Request):
     return resp
 
 
+@app.post("/api/auth/platform")
+def platform_login(request: Request):
+    """Обмен Keycloak-токена Платформы на свою сессию (SSO, фича за флагом).
+
+    Токен проверяется по JWKS, доступ гейтит роль opros-user, личность —
+    по email/keycloak_id. Роль/РЭС берём из своей БД. Отдаём тот же формат,
+    что и обычный /api/login (token + user), и ставим cookie сессии."""
+    user = auth.resolve_platform_user(request)  # бросает 401/403 сам
+    token = auth.create_session(user.id)
+    resp = JSONResponse({"token": token, "user": _user_dict(user)})
+    resp.set_cookie("session", token, httponly=True, samesite="lax", max_age=12 * 3600)
+    return resp
+
+
 def _user_dict(u: User):
-    return {"id": u.id, "login": u.login, "name": u.name, "role": u.role, "res": u.res_name}
+    return {"id": u.id, "login": u.login, "name": u.name, "role": u.role,
+            "res": u.res_name, "email": u.email}
 
 
 @app.get("/api/me")
@@ -72,7 +99,10 @@ def whoami(user: User = Depends(me)):
 @app.get("/api/users")
 def users_list(user: User = Depends(me), db=Depends(db_session)):
     auth.require_roles(user, "admin", "uploader", "staff")
-    return [dict(_user_dict(u), active=u.active) for u in db.query(User).order_by(User.id)]
+    users = db.query(User).all()
+    # Сортировка по алфавиту: по имени (или логину, если имя пусто), регистр не важен.
+    users.sort(key=lambda u: (u.name or u.login or "").casefold())
+    return [dict(_user_dict(u), active=u.active) for u in users]
 
 
 @app.post("/api/users")
@@ -86,7 +116,8 @@ def users_create(payload: dict = Body(...), user: User = Depends(me), db=Depends
     role = payload.get("role", "res")
     u = User(login=login_, pass_hash=auth.hash_pw(payload["password"]),
              name=payload.get("name", ""), role=role,
-             res_name=payload.get("res") if role == "res" else None)
+             res_name=payload.get("res") if role == "res" else None,
+             email=(payload.get("email") or "").strip() or None)
     db.add(u)
     db.commit()
     return _user_dict(u)
@@ -105,6 +136,8 @@ def users_update(uid: int, payload: dict = Body(...), user: User = Depends(me), 
             setattr(u, f, payload[f])
     if "res" in payload:
         u.res_name = payload["res"]
+    if "email" in payload:
+        u.email = (payload.get("email") or "").strip() or None
     if "active" in payload:
         u.active = bool(payload["active"])
     db.commit()

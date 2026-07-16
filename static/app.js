@@ -5,19 +5,43 @@
    res      — только свой РЭС, выгрузка отчётов, закрытие заданий            */
 
 let USER = null, RES = "", CHARTS = [];
+let TOKEN = localStorage.getItem("opros_token") || "";
 
-/* — приём токена от оболочки Платформы (SUE_system): задел на Keycloak — */
+/* — Интеграция с Платформой (SUE_system, Keycloak SSO) — */
+const PLATFORM_ORIGIN = "https://sue-system-ashinoff.amvera.io";
+const EMBEDDED = window.parent !== window;
+
+// Обмен Keycloak-токена (пришёл postMessage от Платформы) на свою сессию.
+async function exchangePlatformToken(kcToken) {
+  try {
+    const r = await fetch("/api/auth/platform", {
+      method: "POST", headers: { Authorization: "Bearer " + kcToken },
+    });
+    if (!r.ok) return false;
+    const d = await r.json();
+    TOKEN = d.token || ""; localStorage.setItem("opros_token", TOKEN);
+    USER = d.user; boot();
+    return true;
+  } catch { return false; }
+}
+
 window.addEventListener("message", (e) => {
-  if (e.data && e.data.type === "platform-auth" && e.data.token) {
-    window.PLATFORM_TOKEN = e.data.token; // TODO: обмен на сессию, когда подключим Keycloak
-  }
+  if (e.origin !== PLATFORM_ORIGIN) return;            // доверяем только Платформе
+  if (e.data && e.data.type === "platform-auth" && e.data.token)
+    exchangePlatformToken(e.data.token);
 });
+// Сообщаем оболочке, что готовы принять токен (закрывает гонку с onLoad iframe).
+if (EMBEDDED) { try { window.parent.postMessage({ type: "app-ready" }, PLATFORM_ORIGIN); } catch {} }
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// Bearer-токен (localStorage) — чтобы работать и во встроенном iframe, где
+// SameSite=Lax cookie не отправляется на XHR из стороннего контекста.
+function authHeaders(h = {}) { return TOKEN ? { ...h, Authorization: "Bearer " + TOKEN } : h; }
+
 async function api(url, opts = {}) {
-  const r = await fetch(url, { credentials: "same-origin", ...opts });
+  const r = await fetch(url, { credentials: "same-origin", ...opts, headers: authHeaders(opts.headers) });
   if (r.status === 401) { showLogin(); throw new Error("unauthorized"); }
   if (!r.ok) {
     let msg = "Ошибка " + r.status;
@@ -38,11 +62,17 @@ async function doLogin() {
   $("l_err").textContent = "";
   try {
     const d = await post("/api/login", { login: $("l_login").value, password: $("l_pass").value });
+    TOKEN = d.token || ""; localStorage.setItem("opros_token", TOKEN);
     USER = d.user; boot();
   } catch (e) { $("l_err").textContent = e.message; }
 }
-async function doLogout() { await post("/api/logout", {}); location.reload(); }
-$("l_pass") && ($("l_pass").onkeydown = (e) => e.key === "Enter" && doLogin());
+async function doLogout() {
+  try { await post("/api/logout", {}); } catch {}
+  TOKEN = ""; localStorage.removeItem("opros_token"); location.reload();
+}
+// ВАЖНО: не возвращать false из onkeydown — иначе ввод символов отменяется
+// (preventDefault) и в поле пароля нельзя печатать. Реагируем только на Enter.
+$("l_pass") && ($("l_pass").onkeydown = (e) => { if (e.key === "Enter") doLogin(); });
 
 /* ---------------- Каркас ---------------- */
 const TABS = [
@@ -322,8 +352,9 @@ const VIEWS = {
     $("content").innerHTML = `
       <div class="card"><div class="toolbar"><h2 style="margin:0">Пользователи</h2>
         <button class="btn primary small" onclick="userModal(null)">+ Добавить</button></div>
-        <table><thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>РЭС</th><th>Активен</th><th></th></tr></thead>
-        <tbody>${users.map(u => `<tr><td><b>${esc(u.login)}</b></td><td>${esc(u.name)}</td><td>${roleName(u.role)}</td>
+        <table><thead><tr><th>Логин</th><th>Имя</th><th>Email</th><th>Роль</th><th>РЭС</th><th>Активен</th><th></th></tr></thead>
+        <tbody>${users.map(u => `<tr><td><b>${esc(u.login)}</b></td><td>${esc(u.name)}</td>
+          <td>${u.email ? esc(u.email) : '<span class="muted">—</span>'}</td><td>${roleName(u.role)}</td>
           <td>${esc(u.res || "—")}</td><td>${u.active ? "✓" : "✕"}</td>
           <td><button class="btn small" onclick='userModal(${JSON.stringify(u)})'>Изменить</button></td></tr>`).join("")}
         </tbody></table></div>`;
@@ -352,7 +383,7 @@ async function sendFile(f) {
   $("upStatus").textContent = "Отправка файла…";
   const fd = new FormData(); fd.append("file", f);
   try {
-    const r = await fetch("/api/upload", { method: "POST", body: fd, credentials: "same-origin" });
+    const r = await fetch("/api/upload", { method: "POST", body: fd, credentials: "same-origin", headers: authHeaders() });
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || "Ошибка");
     $("upStatus").textContent = d.message;
@@ -406,6 +437,7 @@ function userModal(u) {
   const bg = modal(`<h3>${u ? "Изменить" : "Новый"} пользователь</h3>
     <label>Логин</label><input id="u_login" value="${u ? esc(u.login) : ""}" ${u ? "disabled" : ""}>
     <label>Имя</label><input id="u_name" value="${u ? esc(u.name) : ""}">
+    <label>Email (для входа через Платформу / Keycloak)</label><input id="u_email" type="email" value="${u ? esc(u.email || "") : ""}" placeholder="user@example.ru">
     <label>Роль</label><select id="u_role">
       <option value="admin">Администратор</option><option value="uploader">Админ-загрузчик</option>
       <option value="staff">Служба учёта</option><option value="res">Участок (РЭС)</option></select>
@@ -416,7 +448,7 @@ function userModal(u) {
     <button class="btn primary" id="u_save">Сохранить</button></div>`);
   if (u) { bg.querySelector("#u_role").value = u.role; bg.querySelector("#u_res").value = u.res || ""; }
   bg.querySelector("#u_save").onclick = async () => {
-    const body = { name: $("u_name").value, role: $("u_role").value, res: $("u_res").value || null, password: $("u_pass").value };
+    const body = { name: $("u_name").value, email: $("u_email").value, role: $("u_role").value, res: $("u_res").value || null, password: $("u_pass").value };
     if (u) body.active = $("u_active").checked;
     try {
       if (u) await post("/api/users/" + u.id, body);
@@ -428,6 +460,13 @@ function userModal(u) {
 
 /* ---------------- Старт ---------------- */
 (async () => {
-  try { USER = await api("/api/me"); boot(); }
-  catch { showLogin(); }
+  // Прямой fetch (не api()), чтобы 401 не дёргал форму входа раньше времени.
+  try {
+    const r = await fetch("/api/me", { credentials: "same-origin", headers: authHeaders() });
+    if (r.ok) { USER = await r.json(); boot(); return; }
+  } catch {}
+  // Во встроенном режиме ждём токен от Платформы; если не пришёл — показываем
+  // обычную форму входа как запасной вариант.
+  if (EMBEDDED) setTimeout(() => { if (!USER) showLogin(); }, 4000);
+  else showLogin();
 })();

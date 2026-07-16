@@ -4,13 +4,18 @@
 Позже сюда же подключается Keycloak-токен от оболочки Платформы
 (postMessage {type:'platform-auth', token}) — фронт уже слушает это сообщение.
 """
+import logging
 import os
 import hashlib
 import hmac
 import secrets
 import time
 from fastapi import Request, HTTPException
+from sqlalchemy import func
 from .db import SessionLocal, User
+from . import config, keycloak
+
+logger = logging.getLogger("opros")
 
 SECRET = os.environ.get("APP_SECRET", "change-me-in-env")
 SESSION_TTL = 12 * 3600
@@ -68,6 +73,62 @@ def require_roles(user: User, *roles):
 def visible_res(user: User):
     """None = видит все РЭС; строка = только свой."""
     return user.res_name if user.role == "res" else None
+
+
+def resolve_platform_user(request: Request) -> User:
+    """Определить пользователя по Keycloak-токену Платформы (фича за флагом).
+
+    1) Проверить Bearer-токен по JWKS Keycloak.
+    2) Пустить только при наличии realm-роли opros-user (иначе 403).
+    3) Привязать к локальной учётке — сперва по keycloak_id, при первом входе
+       разово по email (проставив keycloak_id). Учётки не создаём.
+    Роль/РЭС берём из СВОЕЙ БД, а не из токена: Keycloak — «кто ты», приложение —
+    «что тебе можно». Работает только при PLATFORM_SSO=true.
+    """
+    unauthorized = HTTPException(401, "Не удалось проверить токен платформы")
+    if not config.PLATFORM_SSO:
+        logger.info("Platform SSO 401: feature disabled")
+        raise unauthorized
+
+    header = request.headers.get("Authorization", "")
+    if not header.lower().startswith("bearer "):
+        logger.info("Platform SSO 401: missing or malformed Authorization header")
+        raise unauthorized
+    token = header.split(" ", 1)[1].strip()
+
+    try:
+        claims = keycloak.verify_token(token)
+    except keycloak.TokenError as exc:
+        logger.info("Platform SSO 401: %s", exc)
+        raise unauthorized
+
+    identity = keycloak.identity_from_claims(claims)
+    kc_id, email, roles = identity["keycloak_id"], identity["email"], identity["roles"]
+    if not kc_id:
+        logger.info("Platform SSO 401: token has no sub")
+        raise unauthorized
+    if not keycloak.has_access(roles):
+        logger.info("Platform SSO 403: token has no opros-user role")
+        raise HTTPException(403, "Нет доступа к приложению «Опрос ПУ»")
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.keycloak_id == kc_id).first()
+        if user is None and email:
+            user = db.query(User).filter(func.lower(User.email) == email.lower()).first()
+            if user is not None and not user.keycloak_id:
+                user.keycloak_id = kc_id
+                db.commit()
+                logger.info("Platform SSO: linked local user id=%s to keycloak identity", user.id)
+        if user is None:
+            logger.info("Platform SSO 401: no local user matched by keycloak_id or email")
+            raise unauthorized
+        if not user.active:
+            raise HTTPException(403, "Учётная запись отключена")
+        db.expunge(user)
+        return user
+    finally:
+        db.close()
 
 
 def ensure_admin_exists():

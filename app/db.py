@@ -8,12 +8,30 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 os.makedirs(DATA_DIR, exist_ok=True)
-DB_PATH = os.path.join(DATA_DIR, "pu_survey.db")
 
-engine = create_engine(
-    f"sqlite:///{DB_PATH}",
-    connect_args={"check_same_thread": False, "timeout": 60},
-)
+# Подключение к БД:
+#   DATABASE_URL задана  -> PostgreSQL (CNPG на Амвере), например:
+#     postgresql+psycopg2://user:pass@amvera-ashinoff-cnpg-oprosdb-rw:5432/oprosdb
+#   не задана            -> SQLite на постоянном диске (локальная отладка)
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+if DATABASE_URL:
+    # Амвера иногда даёт URL вида postgresql://... — приводим к драйверу psycopg2
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,     # переживаем обрывы соединения/рестарты БД
+        pool_size=5,
+        max_overflow=5,
+        pool_recycle=1800,
+    )
+else:
+    DB_PATH = os.path.join(DATA_DIR, "pu_survey.db")
+    engine = create_engine(
+        f"sqlite:///{DB_PATH}",
+        connect_args={"check_same_thread": False, "timeout": 60},
+    )
 SessionLocal = sessionmaker(bind=engine, autoflush=False)
 Base = declarative_base()
 

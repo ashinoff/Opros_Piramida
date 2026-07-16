@@ -404,9 +404,12 @@ const VIEWS = {
       <div class="card"><h2>Загрузка выгрузки из Пирамиды</h2>
         <div class="dropzone" id="dz" onclick="$('fileInput').click()">
           Перетащите сюда файл «Опрос ПУ…xlsx» (до 50 МБ) или нажмите для выбора.<br>
-          <span class="muted">Обработка 130 тыс. строк занимает 1–2 минуты, идёт в фоне.</span></div>
+          <span class="muted">Файл грузится частями (обход лимита прокси), обработка 130 тыс. строк — 1–2 минуты, идёт в фоне.</span></div>
         <input type="file" id="fileInput" accept=".xlsx" class="hidden">
-        <div id="upStatus" class="muted" style="margin-top:10px"></div></div>
+        <div id="upProgress" class="up-progress hidden">
+          <div class="up-bar"><div id="upBar" class="up-bar-fill"></div></div>
+          <div id="upStatus" class="up-status"></div>
+        </div></div>
       <div class="card"><h2>История загрузок</h2>
         <table><thead><tr><th>№</th><th>Дата</th><th>Файл</th><th>Период</th><th>Всего</th><th>Собирается</th><th>%</th><th>Статус</th><th></th></tr></thead>
         <tbody>${ups.map(u => `<tr><td>${u.id}</td><td>${esc(u.date)}</td><td>${esc(u.filename)}</td><td>${esc(u.period)}</td>
@@ -456,26 +459,62 @@ async function loadMeters(offset) {
       <td>${esc(m.poll_date)}</td><td class="muted">${esc(m.tu)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
+// Прогресс-бар загрузки: pct 0..100; kind = ""|"busy"(индикатор обработки)|"ok"|"err".
+function showUp(pct, text, kind = "") {
+  const wrap = $("upProgress"); if (!wrap) return;
+  wrap.classList.remove("hidden");
+  const bar = $("upBar");
+  bar.className = "up-bar-fill" + (kind === "busy" ? " busy" : "") + (kind === "ok" ? " ok" : "") + (kind === "err" ? " err" : "");
+  bar.style.width = (kind === "busy" ? 100 : Math.max(0, Math.min(100, pct))) + "%";
+  const st = $("upStatus");
+  st.className = "up-status" + (kind === "err" ? " err" : "") + (kind === "ok" ? " ok" : "");
+  st.textContent = text;
+}
+
 async function sendFile(f) {
-  $("upStatus").textContent = "Отправка файла…";
-  const fd = new FormData(); fd.append("file", f);
+  const CHUNK = 512 * 1024;            // 512 КБ — заведомо ниже лимита прокси
+  showUp(0, `Отправка «${f.name}» (${(f.size / 1048576).toFixed(1)} МБ)…`);
   try {
-    const r = await fetch("/api/upload", { method: "POST", body: fd, credentials: "same-origin", headers: authHeaders() });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "Ошибка");
-    $("upStatus").textContent = d.message;
-    const timer = setInterval(async () => {
-      const ups = await api("/api/uploads");
-      const u = ups.find(x => x.id === d.upload_id);
-      if (u && u.status !== "processing") {
-        clearInterval(timer);
-        $("upStatus").textContent = u.status === "done"
-          ? `Готово: ${u.total.toLocaleString("ru")} ПУ, опрос ${u.pct}%. Смотрите вкладку «Изменения».`
-          : "Ошибка: " + u.error;
-        openTab("upload"); markChangesDot();
-      } else { $("upStatus").textContent = "Обработка… (страницу можно не обновлять)"; }
-    }, 4000);
-  } catch (e) { $("upStatus").textContent = "Ошибка: " + e.message; }
+    // 1) начинаем сессию
+    const { token } = await post("/api/upload/begin", { filename: f.name });
+    // 2) шлём куски
+    let sent = 0;
+    for (let start = 0; start < f.size; start += CHUNK) {
+      const blob = f.slice(start, start + CHUNK);
+      const r = await fetch(`/api/upload/chunk/${token}`, {
+        method: "POST", credentials: "same-origin",
+        headers: authHeaders({ "Content-Type": "application/octet-stream" }),
+        body: blob,
+      });
+      if (!r.ok) { let d = ""; try { d = (await r.json()).detail; } catch {} throw new Error(d || ("Ошибка отправки " + r.status)); }
+      sent += blob.size;
+      const p = Math.round(sent / f.size * 100);
+      showUp(Math.round(p * 0.95), `Отправка файла… ${p}%`);
+    }
+    // 3) завершаем — запускается импорт
+    const d = await post(`/api/upload/complete/${token}`, { filename: f.name });
+    showUp(100, "Файл принят, идёт обработка (~1–2 мин). Страницу можно не обновлять.", "busy");
+    pollUpload(d.upload_id);
+  } catch (e) {
+    showUp(0, "Ошибка: " + e.message, "err");
+  }
+}
+
+function pollUpload(id) {
+  const timer = setInterval(async () => {
+    let ups;
+    try { ups = await api("/api/uploads"); } catch { return; }
+    const u = ups.find(x => x.id === id);
+    if (!u || u.status === "processing") { showUp(100, "Обработка… (страницу можно не обновлять)", "busy"); return; }
+    clearInterval(timer);
+    if (u.status === "done") {
+      showUp(100, `Готово: ${u.total.toLocaleString("ru")} ПУ, опрос ${u.pct}%. Смотрите вкладку «Изменения».`, "ok");
+      markChangesDot();
+      setTimeout(() => openTab("upload"), 1800);
+    } else {
+      showUp(0, "Ошибка обработки: " + (u.error || "неизвестно"), "err");
+    }
+  }, 3000);
 }
 
 async function delUpload(id) { if (confirm("Удалить загрузку №" + id + "?")) { await api("/api/uploads/" + id, { method: "DELETE" }); openTab("upload"); } }

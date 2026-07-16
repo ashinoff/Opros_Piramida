@@ -4,8 +4,11 @@
 Роли: admin / uploader / staff / res (участок видит только свой РЭС).
 """
 import os
+import re
+import secrets
 import shutil
 import threading
+import time
 import urllib.parse
 from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Body
@@ -172,6 +175,77 @@ async def upload_file(file: UploadFile = File(...), user: User = Depends(me), db
     threading.Thread(target=run_import, args=(up.id, dest), daemon=True).start()
     return {"upload_id": up.id, "status": "processing",
             "message": "Файл принят, идёт обработка (~1–2 минуты). Обновите статус."}
+
+
+# ---------------- Чанковая загрузка (обход лимита тела прокси Amvera ~413) ----
+# Файл выгрузки Пирамиды 12–15 МБ не проходит одним запросом → грузим кусками
+# по ~512 КБ во временный .part, затем собираем и запускаем импорт.
+_UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
+
+
+def _tmp_part(token: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{32}", token or ""):
+        raise HTTPException(400, "Некорректный токен загрузки")
+    return os.path.join(_UPLOAD_DIR, f"tmp_{token}.part")
+
+
+@app.post("/api/upload/begin")
+def upload_begin(payload: dict = Body(default={}), user: User = Depends(me), db=Depends(db_session)):
+    auth.require_roles(user, "admin", "uploader")
+    if db.query(Upload).filter(Upload.status == "processing").count():
+        raise HTTPException(409, "Уже идёт обработка предыдущей загрузки — дождитесь окончания")
+    if not (payload.get("filename") or "").lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(400, "Ожидается файл .xlsx (выгрузка «Опрос ПУ» из Пирамиды)")
+    os.makedirs(_UPLOAD_DIR, exist_ok=True)
+    # подчистим брошенные временные части старше 2 часов
+    now = time.time()
+    for fn in os.listdir(_UPLOAD_DIR):
+        if fn.startswith("tmp_") and fn.endswith(".part"):
+            p = os.path.join(_UPLOAD_DIR, fn)
+            try:
+                if now - os.path.getmtime(p) > 2 * 3600:
+                    os.remove(p)
+            except OSError:
+                pass
+    token = secrets.token_hex(16)
+    open(_tmp_part(token), "wb").close()
+    return {"token": token}
+
+
+@app.post("/api/upload/chunk/{token}")
+async def upload_chunk(token: str, request: Request, user: User = Depends(me)):
+    auth.require_roles(user, "admin", "uploader")
+    path = _tmp_part(token)
+    if not os.path.exists(path):
+        raise HTTPException(404, "Сессия загрузки не найдена — начните заново")
+    data = await request.body()
+    if os.path.getsize(path) + len(data) > MAX_UPLOAD_MB * 1024 * 1024:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        raise HTTPException(413, f"Файл больше {MAX_UPLOAD_MB} МБ")
+    with open(path, "ab") as f:
+        f.write(data)
+    return {"received": os.path.getsize(path)}
+
+
+@app.post("/api/upload/complete/{token}")
+def upload_complete(token: str, payload: dict = Body(default={}), user: User = Depends(me), db=Depends(db_session)):
+    auth.require_roles(user, "admin", "uploader")
+    path = _tmp_part(token)
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        raise HTTPException(400, "Файл не получен (пустая загрузка) — попробуйте ещё раз")
+    if db.query(Upload).filter(Upload.status == "processing").count():
+        raise HTTPException(409, "Уже идёт обработка предыдущей загрузки — дождитесь окончания")
+    up = Upload(filename=(payload.get("filename") or "upload.xlsx"),
+                uploaded_by=user.id, status="processing")
+    db.add(up)
+    db.commit()
+    dest = os.path.join(_UPLOAD_DIR, f"{up.id}.xlsx")
+    os.replace(path, dest)
+    threading.Thread(target=run_import, args=(up.id, dest), daemon=True).start()
+    return {"upload_id": up.id, "status": "processing"}
 
 
 @app.get("/api/uploads")

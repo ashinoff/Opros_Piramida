@@ -159,6 +159,20 @@ select:focus,input:focus,textarea:focus{outline:none;border-color:var(--violet);
 .dropzone{border:2px dashed var(--border-strong);border-radius:var(--radius);padding:40px;text-align:center;
   color:var(--muted);cursor:pointer;transition:.2s;background:#fbfaff}
 .dropzone.drag{border-color:var(--violet);background:var(--violet-soft)}
+
+/* Прогресс-бар загрузки */
+.up-progress{margin-top:14px}
+.up-bar{height:10px;border-radius:999px;background:var(--violet-soft-2);overflow:hidden}
+.up-bar-fill{height:100%;width:0;border-radius:999px;
+  background:linear-gradient(90deg,var(--violet),var(--violet-dd));transition:width .25s ease}
+.up-bar-fill.ok{background:linear-gradient(90deg,#22c55e,#16a34a)}
+.up-bar-fill.err{background:linear-gradient(90deg,#f87171,#dc2626)}
+.up-bar-fill.busy{width:100%;background:linear-gradient(90deg,var(--violet-soft-2) 0 25%,var(--violet) 50%,var(--violet-soft-2) 75% 100%);
+  background-size:200% 100%;animation:up-flow 1.1s linear infinite}
+@keyframes up-flow{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.up-status{margin-top:8px;font-size:13px;color:var(--muted)}
+.up-status.ok{color:#16a34a;font-weight:600}
+.up-status.err{color:var(--bad);font-weight:600}
 .scroll{max-height:540px;overflow:auto;border:1px solid var(--border);border-radius:9px}
 .prio-1{border-left:4px solid var(--bad)}.prio-2{border-left:4px solid var(--warn)}.prio-3{border-left:4px solid var(--violet)}
 

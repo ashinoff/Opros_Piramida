@@ -106,7 +106,9 @@ def parse_file(path: str):
                 m = PERIOD_RE.search(b)
                 if m:
                     meta["period_from"], meta["period_to"] = m.group(1), m.group(2)
-            if b == HEADER_ROW_MARKER[0] and (len(row) > 2 and row[2] == HEADER_ROW_MARKER[1]):
+            c = row[2] if len(row) > 2 else None
+            if isinstance(b, str) and b.strip() == HEADER_ROW_MARKER[0] \
+                    and isinstance(c, str) and c.strip() == HEADER_ROW_MARKER[1]:
                 header_found = True
                 rows_started = True
                 yield {"meta": meta}

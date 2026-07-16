@@ -92,8 +92,8 @@ a{color:var(--violet-d)}
 .nav-item .ic{opacity:.85;transition:filter .13s,opacity .13s}
 .nav-item:hover{background:rgba(167,139,250,.12);color:#fff}
 .nav-item:hover .ic{opacity:1;filter:drop-shadow(0 0 4px rgba(167,139,250,.7))}
-.nav-item.active{background:linear-gradient(90deg,rgba(139,92,246,.30),rgba(139,92,246,.12));
-  color:#fff;box-shadow:inset 3px 0 0 var(--violet)}
+/* Активный пункт — без заливки, только аккуратная тонкая линия слева. */
+.nav-item.active{color:#fff;box-shadow:inset 2px 0 0 var(--violet)}
 .nav-item.active .ic{opacity:1;filter:drop-shadow(0 0 5px rgba(167,139,250,.9))}
 .nav-item .dot{width:8px;height:8px;border-radius:50%;background:var(--bad);margin-left:auto;
   box-shadow:0 0 6px rgba(220,38,38,.9)}
@@ -111,7 +111,11 @@ a{color:var(--violet-d)}
 .topbar{height:var(--topbar-h);background:var(--card);border-bottom:1px solid var(--border);
   display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:20;
   gap:14px}
-.topbar-title{font-size:17px;font-weight:750;letter-spacing:.2px}
+.topbar-title{font-size:17px;font-weight:750;letter-spacing:.2px;display:flex;align-items:center;gap:10px}
+/* Свечение иконок в заголовках (как в СИЗ-контроль). */
+.hdr-ic{color:var(--violet-d);filter:drop-shadow(0 0 5px rgba(139,92,246,.6));flex-shrink:0}
+.card-title{display:flex;align-items:center;gap:9px;margin:0 0 12px;font-size:15.5px;font-weight:700}
+.card-title.m0{margin:0}
 .topbar-tools{display:flex;align-items:center;gap:12px}
 main{padding:22px 24px;max-width:1600px;width:100%}
 
@@ -121,17 +125,20 @@ main{padding:22px 24px;max-width:1600px;width:100%}
 .card h2{margin:0 0 12px;font-size:15.5px;font-weight:700}
 .row{display:flex;gap:18px;flex-wrap:wrap}.row .card{flex:1;min-width:340px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:18px}
+/* KPI-карточки — без цветной полосы слева, только аккуратная тонкая рамка. */
 .kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:15px 16px;
-  box-shadow:var(--shadow-sm);position:relative;overflow:hidden}
-.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--violet)}
+  box-shadow:var(--shadow-sm)}
 .kpi .v{font-size:27px;font-weight:800}.kpi .l{color:var(--muted);font-size:12px;margin-top:2px}
-.kpi.ok::before{background:var(--ok)}.kpi.bad::before{background:var(--bad)}.kpi.warn::before{background:var(--warn)}
 .kpi.ok .v{color:var(--ok)}.kpi.bad .v{color:var(--bad)}.kpi.warn .v{color:var(--warn)}
 
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
 th{background:#faf9fd;font-weight:650;position:sticky;top:0;color:#4a4360;z-index:1}
 tr:hover td{background:#faf8fe}
+th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+th.sortable:hover{color:var(--violet-d)}
+th.sortable .arr{color:var(--violet-d);font-size:10px}
+tr.total-row td{background:#f3eefe!important;font-weight:700;border-top:2px solid var(--border-strong)}
 .pct{font-weight:700}.pct.good{color:var(--ok)}.pct.mid{color:var(--warn)}.pct.low{color:var(--bad)}
 
 .btn{background:#f1eefb;border:1px solid var(--border-strong);color:var(--text);padding:8px 14px;

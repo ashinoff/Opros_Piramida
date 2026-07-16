@@ -107,6 +107,12 @@ const NAV = [
   ]},
 ];
 const TAB_TITLE = Object.fromEntries(NAV.flatMap(s => s.items.map(i => [i.id, i.label])));
+const TAB_ICON = Object.fromEntries(NAV.flatMap(s => s.items.map(i => [i.id, i.icon])));
+
+// Заголовок карточки с подсвеченной SVG-иконкой (свечение как в СИЗ-контроль).
+function cardTitle(icon, text, inToolbar = true) {
+  return `<h2 class="card-title${inToolbar ? " m0" : ""}">${ic(icon, 18, "hdr-ic")}<span>${esc(text)}</span></h2>`;
+}
 
 // Bearer-токен (localStorage) — чтобы работать и во встроенном iframe, где
 // SameSite=Lax cookie не отправляется на XHR из стороннего контекста.
@@ -198,7 +204,7 @@ function q(extra = "") { return "?" + (RES ? "res=" + encodeURIComponent(RES) + 
 async function openTab(id) {
   currentTab = id; destroyCharts();
   document.querySelectorAll(".nav-item").forEach(a => a.classList.toggle("active", a.id === "nav_" + id));
-  $("pageTitle").textContent = TAB_TITLE[id] || "";
+  $("pageTitle").innerHTML = `${ic(TAB_ICON[id] || "dashboard", 20, "hdr-ic")}<span>${esc(TAB_TITLE[id] || "")}</span>`;
   $("content").innerHTML = `<div class="card muted">Загрузка…</div>`;
   try { await VIEWS[id](); }
   catch (e) { $("content").innerHTML = `<div class="card"><b>Нет данных.</b> ${esc(e.message)}</div>`; }
@@ -226,7 +232,7 @@ const VIEWS = {
         <div class="kpi warn"><div class="v">${fad.toLocaleString("ru")}</div><div class="l">Угасает сбор</div></div>
         <div class="kpi"><div class="v">${dis.toLocaleString("ru")}</div><div class="l">Отключено</div></div>
       </div>
-      <div class="card"><div class="toolbar"><h2 style="margin:0">Собираемость по РЭС</h2>
+      <div class="card"><div class="toolbar">${cardTitle("chart", "Собираемость по РЭС")}
         <span class="muted">Загрузка от ${esc(d.upload.date)}, период ${esc(d.upload.period)}</span>
         <a class="btn small primary" href="/api/export/summary${q()}" target="_blank">${ic("download", 15)}Выгрузить в Excel (с диаграммами)</a></div>
         <table><thead><tr><th>РЭС</th><th>Всего</th><th>Собирается</th><th>Не собирается</th><th>% опроса</th>
@@ -235,12 +241,18 @@ const VIEWS = {
           <td>${r.collected.toLocaleString("ru")}</td><td>${r.not_collected.toLocaleString("ru")}</td>
           <td>${pctCell(r.pct)}</td><td>${r.spodes_collected}/${r.spodes_total}</td>
           <td>${pctCell(r.spodes_pct)}</td><td>${r.fading}</td><td>${r.disconnected}</td></tr>`).join("")}
+        <tr class="total-row"><td>Итого по всем РЭС</td><td>${tot.toLocaleString("ru")}</td>
+          <td>${col.toLocaleString("ru")}</td><td>${(tot - col).toLocaleString("ru")}</td>
+          <td>${pctCell(p)}</td>
+          <td>${d.rows.reduce((s, r) => s + r.spodes_collected, 0)}/${d.rows.reduce((s, r) => s + r.spodes_total, 0)}</td>
+          <td>${pctCell(d.rows.reduce((s, r) => s + r.spodes_total, 0) ? d.rows.reduce((s, r) => s + r.spodes_collected, 0) * 100 / d.rows.reduce((s, r) => s + r.spodes_total, 0) : 0)}</td>
+          <td>${fad}</td><td>${dis}</td></tr>
         </tbody></table></div>
       <div class="row">
-        <div class="card"><h2>% опроса по РЭС</h2><div class="chart-box"><canvas id="chResPct"></canvas></div></div>
-        <div class="card"><h2>Факт по датам загрузок</h2><div class="chart-box"><canvas id="chHist"></canvas></div></div>
+        <div class="card">${cardTitle("chart", "% опроса по РЭС", false)}<div class="chart-box"><canvas id="chResPct"></canvas></div></div>
+        <div class="card">${cardTitle("changes", "Факт по датам загрузок", false)}<div class="chart-box"><canvas id="chHist"></canvas></div></div>
       </div>
-      <div class="card"><h2>История загрузок (факт)</h2>
+      <div class="card">${cardTitle("database", "История загрузок (факт)", false)}
         <table><thead><tr><th>Дата загрузки</th><th>Период выгрузки</th><th>Всего</th><th>Собирается</th><th>Не собирается</th><th>%</th></tr></thead>
         <tbody>${d.history.slice().reverse().map(h => `<tr><td>${esc(h.date)}</td><td>${esc(h.period)}</td>
           <td>${h.total.toLocaleString("ru")}</td><td>${h.collected.toLocaleString("ru")}</td>
@@ -259,23 +271,43 @@ const VIEWS = {
 
   async spodes() {
     const rows = await api("/api/report/spodes" + q());
+    // агрегируем по РЭС
     const byRes = {};
     rows.forEach(r => { byRes[r.res] = byRes[r.res] || { t: 0, c: 0 }; byRes[r.res].t += r.total; byRes[r.res].c += r.collected; });
-    const agg = Object.entries(byRes).map(([res, v]) => ({ res, ...v, pct: v.t ? v.c * 100 / v.t : 0 }));
+    const agg = Object.entries(byRes).map(([res, v]) => ({ res, t: v.t, c: v.c, pct: v.t ? v.c * 100 / v.t : 0 }))
+      .sort((a, b) => a.res.localeCompare(b.res, "ru"));
+    const totT = agg.reduce((s, a) => s + a.t, 0), totC = agg.reduce((s, a) => s + a.c, 0);
+    const totPct = totT ? totC * 100 / totT : 0;
+
+    // данные для детализации (сортировка/фильтр) — в глобалах
+    SP_ROWS = rows; SP_TYPE = ""; SP_SORT = { k: "res", dir: 1 };
+    const types = [...new Set(rows.map(r => r.type))].sort((a, b) => a.localeCompare(b, "ru"));
+
     $("content").innerHTML = `
-      <div class="card"><div class="toolbar"><h2 style="margin:0">СПОДЭС — собираемость</h2>${exportBtn("spodes")}</div>
-        <div class="chart-box"><canvas id="chSp"></canvas></div></div>
-      <div class="card"><h2>Детально по типам</h2><div class="scroll"><table>
-        <thead><tr><th>РЭС</th><th>Тип ПУ</th><th>Всего</th><th>Собирается</th><th>Не собирается</th><th>%</th></tr></thead>
-        <tbody>${rows.map(r => `<tr><td>${esc(r.res)}</td><td>${esc(r.type)}</td><td>${r.total}</td>
-          <td>${r.collected}</td><td>${r.not_collected}</td><td>${pctCell(r.pct)}</td></tr>`).join("")}</tbody></table></div></div>`;
-    CHARTS.push(new Chart($("chSp"), {
-      type: "bar",
-      data: { labels: agg.map(a => a.res), datasets: [
-        { label: "Собирается", data: agg.map(a => a.c), backgroundColor: "#1a9850" },
-        { label: "Не собирается", data: agg.map(a => a.t - a.c), backgroundColor: "#d73027" }] },
-      options: { maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } } }
-    }));
+      <div class="card"><div class="toolbar">${cardTitle("chart", "СПОДЭС — собираемость")}${exportBtn("spodes")}</div>
+        <div class="kpis" style="margin-bottom:14px">
+          <div class="kpi"><div class="v">${totT.toLocaleString("ru")}</div><div class="l">Всего СПОДЭС</div></div>
+          <div class="kpi ok"><div class="v">${totC.toLocaleString("ru")}</div><div class="l">Собирается</div></div>
+          <div class="kpi bad"><div class="v">${(totT - totC).toLocaleString("ru")}</div><div class="l">Не собирается</div></div>
+          <div class="kpi ${pctClass(totPct) === 'good' ? 'ok' : pctClass(totPct) === 'low' ? 'bad' : 'warn'}"><div class="v">${totPct.toFixed(2)}%</div><div class="l">Опрос СПОДЭС</div></div>
+        </div>
+        <table><thead><tr><th>РЭС</th><th>Всего</th><th>Собирается</th><th>Не собирается</th><th>% опроса</th></tr></thead><tbody>
+        ${agg.map(a => `<tr><td><b>${esc(a.res)}</b></td><td>${a.t.toLocaleString("ru")}</td>
+          <td>${a.c.toLocaleString("ru")}</td><td>${(a.t - a.c).toLocaleString("ru")}</td><td>${pctCell(a.pct)}</td></tr>`).join("")}
+        <tr class="total-row"><td>Итого по всем РЭС</td><td>${totT.toLocaleString("ru")}</td>
+          <td>${totC.toLocaleString("ru")}</td><td>${(totT - totC).toLocaleString("ru")}</td><td>${pctCell(totPct)}</td></tr>
+        </tbody></table></div>
+      <div class="card">${cardTitle("list", "Детально по типам", false)}
+        <div class="toolbar">
+          <label class="muted">Тип ПУ:</label>
+          <select id="spTypeF" onchange="spSetType(this.value)">
+            <option value="">Все типы (${types.length})</option>
+            ${types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("")}
+          </select>
+          <span class="muted">Клик по заголовку — сортировка</span>
+        </div>
+        <div class="scroll"><table class="data" id="spTypes"></table></div></div>`;
+    renderSpTypes();
   },
 
   async routes() {
@@ -286,14 +318,14 @@ const VIEWS = {
     const broken = devices.filter(d => d.status !== "OK");
     $("content").innerHTML = `
       <div class="row">
-        <div class="card"><div class="toolbar"><h2 style="margin:0">Через что опрашивается</h2>${exportBtn("route")}</div>
+        <div class="card"><div class="toolbar">${cardTitle("route", "Через что опрашивается")}${exportBtn("route")}</div>
           <div class="chart-box"><canvas id="chRoute"></canvas></div>
           <table><thead><tr><th>Маршрут</th><th>ПУ</th><th>Собирается</th><th>%</th></tr></thead><tbody>
           ${route.map(r => `<tr><td>${esc(r.group)}</td><td>${r.total.toLocaleString("ru")}</td><td>${r.collected.toLocaleString("ru")}</td><td>${pctCell(r.pct)}</td></tr>`).join("")}</tbody></table></div>
-        <div class="card"><div class="toolbar"><h2 style="margin:0">По производителям</h2>${exportBtn("vendor")}</div>
+        <div class="card"><div class="toolbar">${cardTitle("chart", "По производителям")}${exportBtn("vendor")}</div>
           <div class="chart-box"><canvas id="chVendor"></canvas></div></div>
       </div>
-      <div class="card"><div class="toolbar"><h2 style="margin:0">Работоспособность ведущих устройств (МКС / RootRouter / RTR)</h2>
+      <div class="card"><div class="toolbar">${cardTitle("route", "Работоспособность ведущих устройств (МКС / RootRouter / RTR)")}
         ${exportBtn("devices")}<span class="muted">Показаны проблемные и худшие — до 500 строк</span></div>
         <div class="scroll"><table><thead><tr><th>Статус</th><th>Класс</th><th>Устройство</th><th>РЭС</th><th>ПУ</th><th>Собирается</th><th>%</th></tr></thead>
         <tbody>${devices.map(d => `<tr><td><span class="badge ${d.status === 'OK' ? 'ok' : d.status === 'Деградация' ? 'warn' : 'bad'}">${d.status}</span></td>
@@ -318,7 +350,7 @@ const VIEWS = {
     const rows = await api("/api/report/dead_tp" + q());
     const canTask = ["admin", "uploader", "staff"].includes(USER.role);
     $("content").innerHTML = `
-      <div class="card"><div class="toolbar"><h2 style="margin:0">ТП, где не опрашивается ни один ПУ</h2>
+      <div class="card"><div class="toolbar">${cardTitle("alert", "ТП, где не опрашивается ни один ПУ")}
         ${exportBtn("dead_tp")}
         ${canTask && RES ? `<button class="btn primary small" onclick="tasksFromPrio()">Создать задания на «${esc(RES)}»</button>` : ""}
         <span class="muted">Если на ТП 0 из N — почти наверняка не работает ведущее устройство (УСПД/роутер)</span></div>
@@ -340,7 +372,7 @@ const VIEWS = {
         <div class="scroll"><table><thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>
         <tbody>${rows.map(render).join("")}</tbody></table></div></div>`;
     $("content").innerHTML = `
-      <div class="toolbar"><h2 style="margin:0">Очерёдность работ — ${esc(RES)}</h2>${exportBtn("priorities")}</div>
+      <div class="toolbar">${cardTitle("flag", "Очерёдность работ — " + RES)}${exportBtn("priorities")}</div>
       ${sec("prio-1", "1 очередь — восстановить ведущие устройства (ТП целиком без опроса)", p.p1_dead_tp,
         ["ТП", "ПУ", "Маршрут", "Устройство"],
         r => `<tr><td><b>${esc(r.tp)}</b></td><td>${r.total}</td><td>${esc(r.route_class)}</td><td>${esc(r.device)}</td></tr>`)}
@@ -371,7 +403,7 @@ const VIEWS = {
     $("content").innerHTML = `
       <div class="kpis">${Object.entries(d.summary).map(([k, v]) =>
         `<div class="kpi"><div class="v">${v.toLocaleString("ru")}</div><div class="l">${names[k] || k}</div></div>`).join("") || '<div class="card">Изменений нет (первая загрузка или всё без изменений).</div>'}</div>
-      <div class="card"><div class="toolbar"><h2 style="margin:0">Что изменилось с прошлой загрузки</h2>
+      <div class="card"><div class="toolbar">${cardTitle("changes", "Что изменилось с прошлой загрузки")}
         ${exportBtn("changes")}
         ${canAck && !d.changes_seen ? `<button class="btn primary small" onclick="ackChanges(${d.upload_id})">${ic("check", 14)}Просмотрено</button>` : d.changes_seen ? '<span class="badge ok">Просмотрено</span>' : ""}</div>
         <div class="scroll"><table><thead><tr><th>Тип</th><th>РЭС</th><th>Детали</th></tr></thead>
@@ -385,7 +417,7 @@ const VIEWS = {
     const stName = { open: "В работе", done: "Выполнено", auto_closed: "Закрыто автоматически" };
     const stBadge = { open: "warn", done: "ok", auto_closed: "info" };
     $("content").innerHTML = `
-      <div class="card"><div class="toolbar"><h2 style="margin:0">Задания на участки</h2>
+      <div class="card"><div class="toolbar">${cardTitle("clipboard", "Задания на участки")}
         ${canCreate ? `<button class="btn primary small" onclick="taskModal()">${ic("plus", 15)}Новое задание</button>` : ""}
         ${exportBtn("tasks")}</div>
         <div class="scroll"><table><thead><tr><th>№</th><th>РЭС</th><th>Приор.</th><th>Задание</th><th>Описание</th><th>ТП / ПУ</th><th>Статус</th><th>Создано</th><th></th></tr></thead>
@@ -401,7 +433,7 @@ const VIEWS = {
   async upload() {
     const ups = await api("/api/uploads");
     $("content").innerHTML = `
-      <div class="card"><h2>Загрузка выгрузки из Пирамиды</h2>
+      <div class="card">${cardTitle("upload", "Загрузка выгрузки из Пирамиды", false)}
         <div class="dropzone" id="dz" onclick="$('fileInput').click()">
           Перетащите сюда файл «Опрос ПУ…xlsx» (до 50 МБ) или нажмите для выбора.<br>
           <span class="muted">Файл грузится частями (обход лимита прокси), обработка 130 тыс. строк — 1–2 минуты, идёт в фоне.</span></div>
@@ -410,7 +442,7 @@ const VIEWS = {
           <div class="up-bar"><div id="upBar" class="up-bar-fill"></div></div>
           <div id="upStatus" class="up-status"></div>
         </div></div>
-      <div class="card"><h2>История загрузок</h2>
+      <div class="card">${cardTitle("database", "История загрузок", false)}
         <table><thead><tr><th>№</th><th>Дата</th><th>Файл</th><th>Период</th><th>Всего</th><th>Собирается</th><th>%</th><th>Статус</th><th></th></tr></thead>
         <tbody>${ups.map(u => `<tr><td>${u.id}</td><td>${esc(u.date)}</td><td>${esc(u.filename)}</td><td>${esc(u.period)}</td>
           <td>${u.total.toLocaleString("ru")}</td><td>${u.collected.toLocaleString("ru")}</td><td>${pctCell(u.pct)}</td>
@@ -430,7 +462,7 @@ const VIEWS = {
     const users = await api("/api/users");
     const resList = await api("/api/res_list");
     $("content").innerHTML = `
-      <div class="card"><div class="toolbar"><h2 style="margin:0">Пользователи</h2>
+      <div class="card"><div class="toolbar">${cardTitle("users", "Пользователи")}
         <button class="btn primary small" onclick="userModal(null)">${ic("plus", 15)}Добавить</button></div>
         <table><thead><tr><th>Логин</th><th>Имя</th><th>Email</th><th>Роль</th><th>РЭС</th><th>Активен</th><th></th></tr></thead>
         <tbody>${users.map(u => `<tr><td><b>${esc(u.login)}</b></td><td>${esc(u.name)}</td>
@@ -441,6 +473,27 @@ const VIEWS = {
     window._resList = resList;
   },
 };
+
+/* ---------------- СПОДЭС: детализация с сортировкой/фильтром ---------------- */
+let SP_ROWS = [], SP_TYPE = "", SP_SORT = { k: "res", dir: 1 };
+function spSetType(v) { SP_TYPE = v; renderSpTypes(); }
+function spSort(k) { if (SP_SORT.k === k) SP_SORT.dir *= -1; else { SP_SORT.k = k; SP_SORT.dir = 1; } renderSpTypes(); }
+function renderSpTypes() {
+  const el = $("spTypes"); if (!el) return;
+  const cols = [["res", "РЭС"], ["type", "Тип ПУ"], ["total", "Всего"], ["collected", "Собирается"], ["not_collected", "Не собирается"], ["pct", "%"]];
+  let rows = SP_ROWS.filter(r => !SP_TYPE || r.type === SP_TYPE);
+  const { k, dir } = SP_SORT;
+  rows = rows.slice().sort((a, b) => {
+    const x = a[k], y = b[k];
+    if (typeof x === "number" && typeof y === "number") return (x - y) * dir;
+    return String(x).localeCompare(String(y), "ru") * dir;
+  });
+  const arr = (key) => SP_SORT.k === key ? `<span class="arr">${SP_SORT.dir > 0 ? "▲" : "▼"}</span>` : "";
+  const th = cols.map(([key, lbl]) => `<th class="sortable" onclick="spSort('${key}')">${lbl} ${arr(key)}</th>`).join("");
+  const body = rows.map(r => `<tr><td>${esc(r.res)}</td><td>${esc(r.type)}</td><td>${r.total}</td>
+    <td>${r.collected}</td><td>${r.not_collected}</td><td>${pctCell(r.pct)}</td></tr>`).join("");
+  el.innerHTML = `<thead><tr>${th}</tr></thead><tbody>${body || '<tr><td colspan="6" class="muted">Нет данных</td></tr>'}</tbody>`;
+}
 
 /* ---------------- Действия ---------------- */
 async function loadMeters(offset) {

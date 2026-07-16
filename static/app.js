@@ -36,6 +36,60 @@ if (EMBEDDED) { try { window.parent.postMessage({ type: "app-ready" }, PLATFORM_
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+/* ---------------- SVG-иконки (lucide-style, наследуют currentColor) ------- */
+const ICONS = {
+  dashboard: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  chart: '<rect x="3" y="12" width="4" height="8" rx="1"/><rect x="10" y="8" width="4" height="12" rx="1"/><rect x="17" y="4" width="4" height="16" rx="1"/>',
+  route: '<circle cx="6" cy="19" r="2.4"/><circle cx="18" cy="5" r="2.4"/><path d="M8.4 19H14a3.5 3.5 0 0 0 0-7H10a3.5 3.5 0 0 1 0-7h5.6"/>',
+  alert: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>',
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+  changes: '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>',
+  clipboard: '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 14l2 2 4-4"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>',
+  users: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><circle cx="12" cy="10" r="2.2"/><path d="M8.5 16a3.5 3.5 0 0 1 7 0"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  cleft: '<path d="M15 18l-6-6 6-6"/>',
+  cright: '<path d="M9 18l6-6-6-6"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/>',
+  warn: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>',
+};
+function ic(name, size = 18, cls = "") {
+  return `<svg class="ic ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+}
+
+/* Логотип «Опрос ПУ» — ступенчатая пирамида (белая для сайдбара). */
+const BRAND_PYRAMID = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 20.5 20.5 3.5 20.5Z"/><path d="M7.6 12.2H16.4"/><path d="M5.1 16.4H18.9"/></svg>';
+/* Плитка-логотип для входа — фиолетово-чёрный градиент. */
+const BRAND_TILE = '<svg viewBox="0 0 512 512"><defs><linearGradient id="oprosG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#0b0a12"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#oprosG)"/><g transform="translate(88 88) scale(14)" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 20.5 20.5 3.5 20.5Z"/><path d="M7.6 12.2H16.4"/><path d="M5.1 16.4H18.9"/></g></svg>';
+
+/* Боковое меню: разделы, иконки, роли, признак «неон»/«точка уведомления». */
+const NAV = [
+  { section: "Обзор", items: [
+    { id: "dashboard", label: "Сводка", icon: "dashboard", roles: ["admin", "uploader", "staff", "res"] },
+  ]},
+  { section: "Аналитика", items: [
+    { id: "spodes", label: "СПОДЭС", icon: "chart", roles: ["admin", "uploader", "staff", "res"] },
+    { id: "routes", label: "Маршруты и устройства", icon: "route", roles: ["admin", "uploader", "staff", "res"] },
+    { id: "deadtp", label: "Неисправные ТП", icon: "alert", neon: true, roles: ["admin", "uploader", "staff", "res"] },
+    { id: "priorities", label: "Приоритеты", icon: "flag", roles: ["admin", "uploader", "staff", "res"] },
+  ]},
+  { section: "Реестр", items: [
+    { id: "meters", label: "Реестр ПУ", icon: "database", roles: ["admin", "uploader", "staff", "res"] },
+    { id: "changes", label: "Изменения", icon: "changes", dot: true, roles: ["admin", "uploader", "staff"] },
+    { id: "tasks", label: "Задания", icon: "clipboard", roles: ["admin", "uploader", "staff", "res"] },
+  ]},
+  { section: "Администрирование", items: [
+    { id: "upload", label: "Загрузка", icon: "upload", roles: ["admin", "uploader"] },
+    { id: "users", label: "Пользователи", icon: "users", roles: ["admin"] },
+  ]},
+];
+const TAB_TITLE = Object.fromEntries(NAV.flatMap(s => s.items.map(i => [i.id, i.label])));
+
 // Bearer-токен (localStorage) — чтобы работать и во встроенном iframe, где
 // SameSite=Lax cookie не отправляется на XHR из стороннего контекста.
 function authHeaders(h = {}) { return TOKEN ? { ...h, Authorization: "Bearer " + TOKEN } : h; }
@@ -57,7 +111,12 @@ function pctCell(p) { return `<span class="pct ${pctClass(p)}">${p.toFixed(2)}%<
 function destroyCharts() { CHARTS.forEach(c => c.destroy()); CHARTS = []; }
 
 /* ---------------- Авторизация ---------------- */
-function showLogin() { $("login").classList.remove("hidden"); $("app").classList.add("hidden"); }
+function hideLoader() { const l = $("loading"); if (l) l.classList.add("hidden"); }
+function showLogin() {
+  hideLoader();
+  const ll = $("loginLogo"); if (ll && !ll.innerHTML) ll.innerHTML = BRAND_TILE;
+  $("login").classList.remove("hidden"); $("app").classList.add("hidden");
+}
 async function doLogin() {
   $("l_err").textContent = "";
   try {
@@ -75,22 +134,14 @@ async function doLogout() {
 $("l_pass") && ($("l_pass").onkeydown = (e) => { if (e.key === "Enter") doLogin(); });
 
 /* ---------------- Каркас ---------------- */
-const TABS = [
-  { id: "dashboard", label: "Сводка", roles: ["admin", "uploader", "staff", "res"] },
-  { id: "spodes", label: "СПОДЭС", roles: ["admin", "uploader", "staff", "res"] },
-  { id: "routes", label: "Маршруты и устройства", roles: ["admin", "uploader", "staff", "res"] },
-  { id: "deadtp", label: "Неисправные ТП", roles: ["admin", "uploader", "staff", "res"] },
-  { id: "priorities", label: "Приоритеты", roles: ["admin", "uploader", "staff", "res"] },
-  { id: "meters", label: "Реестр ПУ", roles: ["admin", "uploader", "staff", "res"] },
-  { id: "changes", label: "Изменения", roles: ["admin", "uploader", "staff"] },
-  { id: "tasks", label: "Задания", roles: ["admin", "uploader", "staff", "res"] },
-  { id: "upload", label: "Загрузка", roles: ["admin", "uploader"] },
-  { id: "users", label: "Пользователи", roles: ["admin"] },
-];
-
 async function boot() {
+  hideLoader();
   $("login").classList.add("hidden"); $("app").classList.remove("hidden");
-  $("userName").textContent = `${USER.name || USER.login} (${roleName(USER.role)}${USER.res ? ", " + USER.res : ""})`;
+  $("brand").innerHTML =
+    `<div class="brand-logo">${BRAND_PYRAMID}</div>
+     <div class="brand-txt"><div class="t">Опрос ПУ</div><div class="s">Аналитика собираемости</div></div>`;
+  $("userName").textContent = `${USER.name || USER.login} · ${roleName(USER.role)}${USER.res ? " · " + USER.res : ""}`;
+  $("logoutBtn").innerHTML = `${ic("logout", 15)}<span>Выйти</span>`;
   const resSel = $("resFilter");
   const resList = await api("/api/res_list").catch(() => []);
   if (USER.role === "res") {
@@ -98,37 +149,44 @@ async function boot() {
   } else {
     resSel.innerHTML = `<option value="">Все РЭС</option>` + resList.map(r => `<option>${esc(r)}</option>`).join("");
   }
-  renderTabs(); openTab("dashboard");
+  renderNav(); openTab("dashboard");
   markChangesDot();
 }
 function roleName(r) { return { admin: "администратор", uploader: "загрузчик", staff: "служба учёта", res: "участок" }[r] || r; }
 function onResChange() { RES = $("resFilter").value; openTab(currentTab); }
 let currentTab = "dashboard";
 
-function renderTabs() {
-  $("tabs").innerHTML = TABS.filter(t => t.roles.includes(USER.role))
-    .map(t => `<a id="tab_${t.id}" onclick="openTab('${t.id}')">${t.label}</a>`).join("");
+function renderNav() {
+  $("nav").innerHTML = NAV.map(sec => {
+    const items = sec.items.filter(i => i.roles.includes(USER.role));
+    if (!items.length) return "";
+    return `<div class="nav-section">${sec.section}</div>` + items.map(i =>
+      `<div class="nav-item${i.neon ? " neon" : ""}" id="nav_${i.id}" onclick="openTab('${i.id}')">
+         ${ic(i.icon, 18)}<span>${i.label}</span></div>`).join("");
+  }).join("");
 }
 async function markChangesDot() {
   if (!["admin", "uploader", "staff"].includes(USER.role)) return;
   try {
     const c = await api("/api/report/changes" + q());
-    if (!c.changes_seen && Object.keys(c.summary).length && $("tab_changes"))
-      $("tab_changes").innerHTML = 'Изменения<span class="dot"></span>';
+    const el = $("nav_changes");
+    if (!c.changes_seen && Object.keys(c.summary).length && el && !el.querySelector(".dot"))
+      el.insertAdjacentHTML("beforeend", '<span class="dot"></span>');
   } catch {}
 }
 function q(extra = "") { return "?" + (RES ? "res=" + encodeURIComponent(RES) + "&" : "") + extra; }
 
 async function openTab(id) {
   currentTab = id; destroyCharts();
-  document.querySelectorAll("nav a").forEach(a => a.classList.toggle("active", a.id === "tab_" + id));
+  document.querySelectorAll(".nav-item").forEach(a => a.classList.toggle("active", a.id === "nav_" + id));
+  $("pageTitle").textContent = TAB_TITLE[id] || "";
   $("content").innerHTML = `<div class="card muted">Загрузка…</div>`;
   try { await VIEWS[id](); }
   catch (e) { $("content").innerHTML = `<div class="card"><b>Нет данных.</b> ${esc(e.message)}</div>`; }
 }
 
-const exportBtn = (kind, label = "⬇ Excel") =>
-  `<a class="btn small" href="/api/export/report${q("kind=" + kind)}" target="_blank">${label}</a>`;
+const exportBtn = (kind, label = "Excel") =>
+  `<a class="btn small" href="/api/export/report${q("kind=" + kind)}" target="_blank">${ic("download", 15)}${label}</a>`;
 
 /* ---------------- Вкладки ---------------- */
 const VIEWS = {
@@ -151,7 +209,7 @@ const VIEWS = {
       </div>
       <div class="card"><div class="toolbar"><h2 style="margin:0">Собираемость по РЭС</h2>
         <span class="muted">Загрузка от ${esc(d.upload.date)}, период ${esc(d.upload.period)}</span>
-        <a class="btn small primary" href="/api/export/summary${q()}" target="_blank">⬇ Выгрузить в Excel (с диаграммами)</a></div>
+        <a class="btn small primary" href="/api/export/summary${q()}" target="_blank">${ic("download", 15)}Выгрузить в Excel (с диаграммами)</a></div>
         <table><thead><tr><th>РЭС</th><th>Всего</th><th>Собирается</th><th>Не собирается</th><th>% опроса</th>
         <th>СПОДЭС</th><th>% СПОДЭС</th><th>Угасает</th><th>Отключено</th></tr></thead><tbody>
         ${d.rows.map(r => `<tr><td><b>${esc(r.res)}</b></td><td>${r.total.toLocaleString("ru")}</td>
@@ -281,7 +339,7 @@ const VIEWS = {
         <input type="text" id="mSearch" placeholder="Поиск: серийник / ТП / адрес" style="width:280px">
         <label><input type="checkbox" id="mNc"> только без опроса</label>
         <button class="btn primary small" onclick="loadMeters(0)">Найти</button>
-        ${exportBtn("not_collected", "⬇ Все без опроса (Excel)")}</div>
+        ${exportBtn("not_collected", "Все без опроса (Excel)")}</div>
         <div id="mResult" class="muted">Задайте фильтр и нажмите «Найти».</div></div>`;
     loadMeters(0);
   },
@@ -296,7 +354,7 @@ const VIEWS = {
         `<div class="kpi"><div class="v">${v.toLocaleString("ru")}</div><div class="l">${names[k] || k}</div></div>`).join("") || '<div class="card">Изменений нет (первая загрузка или всё без изменений).</div>'}</div>
       <div class="card"><div class="toolbar"><h2 style="margin:0">Что изменилось с прошлой загрузки</h2>
         ${exportBtn("changes")}
-        ${canAck && !d.changes_seen ? `<button class="btn primary small" onclick="ackChanges(${d.upload_id})">✓ Просмотрено</button>` : d.changes_seen ? '<span class="badge ok">Просмотрено</span>' : ""}</div>
+        ${canAck && !d.changes_seen ? `<button class="btn primary small" onclick="ackChanges(${d.upload_id})">${ic("check", 14)}Просмотрено</button>` : d.changes_seen ? '<span class="badge ok">Просмотрено</span>' : ""}</div>
         <div class="scroll"><table><thead><tr><th>Тип</th><th>РЭС</th><th>Детали</th></tr></thead>
         <tbody>${d.items.map(i => `<tr><td><span class="badge ${badge[i.type] || 'info'}">${names[i.type] || i.type}</span></td>
           <td>${esc(i.res)}</td><td class="muted">${esc(i.details)}</td></tr>`).join("")}</tbody></table></div></div>`;
@@ -309,7 +367,7 @@ const VIEWS = {
     const stBadge = { open: "warn", done: "ok", auto_closed: "info" };
     $("content").innerHTML = `
       <div class="card"><div class="toolbar"><h2 style="margin:0">Задания на участки</h2>
-        ${canCreate ? `<button class="btn primary small" onclick="taskModal()">+ Новое задание</button>` : ""}
+        ${canCreate ? `<button class="btn primary small" onclick="taskModal()">${ic("plus", 15)}Новое задание</button>` : ""}
         ${exportBtn("tasks")}</div>
         <div class="scroll"><table><thead><tr><th>№</th><th>РЭС</th><th>Приор.</th><th>Задание</th><th>Описание</th><th>ТП / ПУ</th><th>Статус</th><th>Создано</th><th></th></tr></thead>
         <tbody>${rows.map(t => `<tr class="prio-${t.priority}"><td>${t.id}</td><td>${esc(t.res)}</td><td>${t.priority}</td>
@@ -336,9 +394,9 @@ const VIEWS = {
           <td>${u.total.toLocaleString("ru")}</td><td>${u.collected.toLocaleString("ru")}</td><td>${pctCell(u.pct)}</td>
           <td><span class="badge ${u.status === 'done' ? 'ok' : u.status === 'error' ? 'bad' : 'warn'}">${u.status}</span>
             ${u.error ? `<div class="muted">${esc(u.error)}</div>` : ""}</td>
-          <td>${USER.role === "admin" ? `<button class="btn small danger" onclick="delUpload(${u.id})">✕</button>` : ""}</td></tr>`).join("")}
+          <td>${USER.role === "admin" ? `<button class="btn small danger" onclick="delUpload(${u.id})" title="Удалить">${ic("trash", 14)}</button>` : ""}</td></tr>`).join("")}
         </tbody></table>
-        ${USER.role === "admin" ? `<p><button class="btn danger" onclick="wipeDb()">⚠ Полностью очистить базу</button></p>` : ""}</div>`;
+        ${USER.role === "admin" ? `<p><button class="btn danger" onclick="wipeDb()">${ic("warn", 15)}Полностью очистить базу</button></p>` : ""}</div>`;
     const dz = $("dz"), fi = $("fileInput");
     fi.onchange = () => fi.files[0] && sendFile(fi.files[0]);
     dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("drag"); };
@@ -351,11 +409,11 @@ const VIEWS = {
     const resList = await api("/api/res_list");
     $("content").innerHTML = `
       <div class="card"><div class="toolbar"><h2 style="margin:0">Пользователи</h2>
-        <button class="btn primary small" onclick="userModal(null)">+ Добавить</button></div>
+        <button class="btn primary small" onclick="userModal(null)">${ic("plus", 15)}Добавить</button></div>
         <table><thead><tr><th>Логин</th><th>Имя</th><th>Email</th><th>Роль</th><th>РЭС</th><th>Активен</th><th></th></tr></thead>
         <tbody>${users.map(u => `<tr><td><b>${esc(u.login)}</b></td><td>${esc(u.name)}</td>
           <td>${u.email ? esc(u.email) : '<span class="muted">—</span>'}</td><td>${roleName(u.role)}</td>
-          <td>${esc(u.res || "—")}</td><td>${u.active ? "✓" : "✕"}</td>
+          <td>${esc(u.res || "—")}</td><td>${u.active ? '<span class="badge ok">Активен</span>' : '<span class="badge bad">Отключён</span>'}</td>
           <td><button class="btn small" onclick='userModal(${JSON.stringify(u)})'>Изменить</button></td></tr>`).join("")}
         </tbody></table></div>`;
     window._resList = resList;
@@ -368,8 +426,8 @@ async function loadMeters(offset) {
   const d = await api("/api/meters" + q(`not_collected=${nc}&search=${encodeURIComponent(s)}&limit=200&offset=${offset}`));
   $("mResult").innerHTML = `
     <p>Найдено: <b>${d.total.toLocaleString("ru")}</b> (показано ${offset + 1}–${offset + d.items.length})
-      ${offset > 0 ? `<button class="btn small" onclick="loadMeters(${offset - 200})">← Назад</button>` : ""}
-      ${offset + 200 < d.total ? `<button class="btn small" onclick="loadMeters(${offset + 200})">Далее →</button>` : ""}</p>
+      ${offset > 0 ? `<button class="btn small" onclick="loadMeters(${offset - 200})">${ic("cleft", 14)}Назад</button>` : ""}
+      ${offset + 200 < d.total ? `<button class="btn small" onclick="loadMeters(${offset + 200})">Далее${ic("cright", 14)}</button>` : ""}</p>
     <div class="scroll"><table><thead><tr><th>Тип ПУ</th><th>Серийный</th><th>РЭС</th><th>Фидер</th><th>ТП</th>
       <th>Маршрут</th><th>Опрос</th><th>Дата опроса</th><th>Точка учёта</th></tr></thead>
     <tbody>${d.items.map(m => `<tr><td>${esc(m.type)}${m.spodes ? ' <span class="badge info">СПОДЭС</span>' : ""}</td>

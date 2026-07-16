@@ -8,9 +8,26 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+
+<!-- Фирменная заставка загрузки РОССЕТИ -->
+<div id="loading" class="loading-screen">
+  <div class="rosseti-word">
+    <span class="rosseti-letter" style="animation-delay:0s">Р</span>
+    <span class="rosseti-letter" style="animation-delay:.3s">О</span>
+    <span class="rosseti-letter" style="animation-delay:.6s">С</span>
+    <span class="rosseti-letter" style="animation-delay:.9s">С</span>
+    <span class="rosseti-letter" style="animation-delay:1.2s">Е</span>
+    <span class="rosseti-letter" style="animation-delay:1.5s">Т</span>
+    <span class="rosseti-letter" style="animation-delay:1.8s">И</span>
+  </div>
+  <div class="loading-caption">Опрос ПУ · загрузка</div>
+</div>
+
+<!-- Экран входа -->
 <div id="login" class="login-wrap hidden">
   <div class="login-card">
-    <h1>Опрос ПУ</h1>
+    <div class="login-logo" id="loginLogo"></div>
+    <h1>Опрос&nbsp;ПУ</h1>
     <p class="muted">Аналитика собираемости приборов учёта</p>
     <input id="l_login" placeholder="Логин" autocomplete="username">
     <input id="l_pass" type="password" placeholder="Пароль" autocomplete="current-password">
@@ -19,17 +36,25 @@
   </div>
 </div>
 
-<div id="app" class="hidden">
-  <header>
-    <div class="brand">⚡ Опрос ПУ</div>
-    <nav id="tabs"></nav>
-    <div class="userbox">
-      <select id="resFilter" onchange="onResChange()" title="Фильтр по РЭС"></select>
-      <span id="userName" class="muted"></span>
-      <button class="btn small" onclick="doLogout()">Выйти</button>
+<!-- Основное приложение -->
+<div id="app" class="app-shell hidden">
+  <aside class="sidebar">
+    <div class="sidebar-brand" id="brand"></div>
+    <nav class="sidebar-nav" id="nav"></nav>
+    <div class="sidebar-foot">
+      <div class="user-line"><span id="userName" class="muted"></span></div>
+      <button class="btn-logout" onclick="doLogout()" id="logoutBtn">Выйти</button>
     </div>
-  </header>
-  <main id="content"></main>
+  </aside>
+  <div class="main-area">
+    <header class="topbar">
+      <div class="topbar-title" id="pageTitle">Сводка</div>
+      <div class="topbar-tools">
+        <select id="resFilter" onchange="onResChange()" title="Фильтр по РЭС"></select>
+      </div>
+    </header>
+    <main id="content"></main>
+  </div>
 </div>
 
 <script src="/static/app.js"></script>

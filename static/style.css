@@ -53,6 +53,10 @@ a{color:var(--violet-d)}
   border-radius:9px;font-size:14px;transition:border .15s,box-shadow .15s}
 .login-card input:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 3px rgba(139,92,246,.18)}
 .login-card .btn{width:100%;margin-top:18px}
+.sso-diag{margin-top:12px;font-size:11.5px;line-height:1.4;color:#8a7fb0;
+  background:var(--violet-soft);border:1px solid var(--border);border-radius:8px;
+  padding:8px 10px;min-height:0;text-align:left;word-break:break-word}
+.sso-diag:empty{display:none}
 
 /* ========== Каркас ========== */
 .app-shell{display:flex;min-height:100vh}

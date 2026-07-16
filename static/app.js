@@ -11,24 +11,42 @@ let TOKEN = localStorage.getItem("opros_token") || "";
 const PLATFORM_ORIGIN = "https://sue-system-ashinoff.amvera.io";
 const EMBEDDED = window.parent !== window;
 
+// Диагностика SSO — чтобы на экране входа была видна конкретная причина, а не
+// просто «выкинуло на форму». Пишется и в консоль, и в подпись под формой.
+let SSO_DIAG = "";
+function setDiag(msg) {
+  SSO_DIAG = msg;
+  try { console.log("[SSO]", msg); } catch {}
+  const el = document.getElementById("ssoDiag");
+  if (el) el.textContent = msg;
+}
+
 // Обмен Keycloak-токена (пришёл postMessage от Платформы) на свою сессию.
 async function exchangePlatformToken(kcToken) {
+  setDiag("Платформа: токен получен, выполняю вход…");
   try {
     const r = await fetch("/api/auth/platform", {
       method: "POST", headers: { Authorization: "Bearer " + kcToken },
     });
-    if (!r.ok) return false;
+    if (!r.ok) {
+      let detail = ""; try { detail = (await r.json()).detail || ""; } catch {}
+      setDiag(`Платформа: вход отклонён (${r.status}). ${detail}`);
+      return false;
+    }
     const d = await r.json();
     TOKEN = d.token || ""; localStorage.setItem("opros_token", TOKEN);
     USER = d.user; boot();
     return true;
-  } catch { return false; }
+  } catch (e) { setDiag("Платформа: сетевая ошибка при обмене токена"); return false; }
 }
 
 window.addEventListener("message", (e) => {
-  if (e.origin !== PLATFORM_ORIGIN) return;            // доверяем только Платформе
-  if (e.data && e.data.type === "platform-auth" && e.data.token)
-    exchangePlatformToken(e.data.token);
+  if (!e.data || e.data.type !== "platform-auth") return;
+  if (e.origin !== PLATFORM_ORIGIN) {                  // доверяем только Платформе
+    setDiag(`Платформа: токен пришёл с origin «${e.origin}», а ожидается «${PLATFORM_ORIGIN}» — не совпадает.`);
+    return;
+  }
+  if (e.data.token) exchangePlatformToken(e.data.token);
 });
 // Сообщаем оболочке, что готовы принять токен (закрывает гонку с onLoad iframe).
 if (EMBEDDED) { try { window.parent.postMessage({ type: "app-ready" }, PLATFORM_ORIGIN); } catch {} }
@@ -115,6 +133,7 @@ function hideLoader() { const l = $("loading"); if (l) l.classList.add("hidden")
 function showLogin() {
   hideLoader();
   const ll = $("loginLogo"); if (ll && !ll.innerHTML) ll.innerHTML = BRAND_TILE;
+  const dg = $("ssoDiag"); if (dg && SSO_DIAG) dg.textContent = SSO_DIAG;
   $("login").classList.remove("hidden"); $("app").classList.add("hidden");
 }
 async function doLogin() {
@@ -526,6 +545,11 @@ function userModal(u) {
   } catch {}
   // Во встроенном режиме ждём токен от Платформы; если не пришёл — показываем
   // обычную форму входа как запасной вариант.
-  if (EMBEDDED) setTimeout(() => { if (!USER) showLogin(); }, 4000);
+  if (EMBEDDED) setTimeout(() => {
+    if (!USER) {
+      if (!SSO_DIAG) setDiag("Платформа: токен так и не пришёл (открыто ли приложение из оболочки? совпадает ли origin?)");
+      showLogin();
+    }
+  }, 5000);
   else showLogin();
 })();

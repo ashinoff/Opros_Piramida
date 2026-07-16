@@ -85,31 +85,32 @@ def resolve_platform_user(request: Request) -> User:
     Роль/РЭС берём из СВОЕЙ БД, а не из токена: Keycloak — «кто ты», приложение —
     «что тебе можно». Работает только при PLATFORM_SSO=true.
     """
-    unauthorized = HTTPException(401, "Не удалось проверить токен платформы")
+    # Причины отказа делаем РАЗЛИЧИМЫМИ (это наша платформа, токен уже проверен по
+    # JWKS до большинства веток) — иначе «выкидывает на вход» без понятной причины.
     if not config.PLATFORM_SSO:
         logger.info("Platform SSO 401: feature disabled")
-        raise unauthorized
+        raise HTTPException(401, "Платформенный вход выключен на сервере (PLATFORM_SSO=false)")
 
     header = request.headers.get("Authorization", "")
     if not header.lower().startswith("bearer "):
         logger.info("Platform SSO 401: missing or malformed Authorization header")
-        raise unauthorized
+        raise HTTPException(401, "Нет токена платформы в запросе")
     token = header.split(" ", 1)[1].strip()
 
     try:
         claims = keycloak.verify_token(token)
     except keycloak.TokenError as exc:
         logger.info("Platform SSO 401: %s", exc)
-        raise unauthorized
+        raise HTTPException(401, f"Токен платформы недействителен ({exc})")
 
     identity = keycloak.identity_from_claims(claims)
     kc_id, email, roles = identity["keycloak_id"], identity["email"], identity["roles"]
     if not kc_id:
         logger.info("Platform SSO 401: token has no sub")
-        raise unauthorized
+        raise HTTPException(401, "В токене нет идентификатора пользователя")
     if not keycloak.has_access(roles):
         logger.info("Platform SSO 403: token has no opros-user role")
-        raise HTTPException(403, "Нет доступа к приложению «Опрос ПУ»")
+        raise HTTPException(403, f"Нет роли доступа «{config.OPROS_ACCESS_ROLE}» (роли токена: {roles})")
 
     db = SessionLocal()
     try:
@@ -125,7 +126,7 @@ def resolve_platform_user(request: Request) -> User:
                 logger.info("Platform SSO: linked local user id=%s to keycloak identity", user.id)
         if user is None:
             logger.info("Platform SSO 401: no local user matched by keycloak_id or email")
-            raise unauthorized
+            raise HTTPException(401, f"Нет учётки «Опрос ПУ» с email {email or '—'} — заведите её в разделе «Пользователи»")
         if not user.active:
             raise HTTPException(403, "Учётная запись отключена")
         db.expunge(user)

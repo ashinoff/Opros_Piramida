@@ -70,18 +70,18 @@ const BRAND_TILE = '<svg viewBox="0 0 512 512"><defs><linearGradient id="oprosG"
 /* Боковое меню: разделы, иконки, роли, признак «неон»/«точка уведомления». */
 const NAV = [
   { section: "Обзор", items: [
-    { id: "dashboard", label: "Сводка", icon: "dashboard", roles: ["admin", "uploader", "staff", "res"] },
+    { id: "dashboard", label: "Сводка", icon: "dashboard", roles: ["admin", "uploader", "staff", "res", "chief"] },
   ]},
   { section: "Аналитика", items: [
-    { id: "spodes", label: "СПОДЭС", icon: "chart", roles: ["admin", "uploader", "staff", "res"] },
-    { id: "routes", label: "Маршруты и устройства", icon: "route", roles: ["admin", "uploader", "staff", "res"] },
-    { id: "deadtp", label: "Неисправные ТП", icon: "alert", neon: true, roles: ["admin", "uploader", "staff", "res"] },
-    { id: "priorities", label: "Приоритеты", icon: "flag", roles: ["admin", "uploader", "staff", "res"] },
+    { id: "spodes", label: "СПОДЭС", icon: "chart", roles: ["admin", "uploader", "staff", "res", "chief"] },
+    { id: "routes", label: "Маршруты и устройства", icon: "route", roles: ["admin", "uploader", "staff", "res", "chief"] },
+    { id: "deadtp", label: "Неисправные ТП", icon: "alert", neon: true, roles: ["admin", "uploader", "staff", "res", "chief"] },
+    { id: "priorities", label: "Приоритеты", icon: "flag", roles: ["admin", "uploader", "staff", "res", "chief"] },
   ]},
   { section: "Реестр", items: [
-    { id: "meters", label: "Реестр ПУ", icon: "database", roles: ["admin", "uploader", "staff", "res"] },
-    { id: "changes", label: "Изменения", icon: "changes", dot: true, roles: ["admin", "uploader", "staff"] },
-    { id: "tasks", label: "Задания", icon: "clipboard", roles: ["admin", "uploader", "staff", "res"] },
+    { id: "meters", label: "Реестр ПУ", icon: "database", roles: ["admin", "uploader", "staff", "res", "chief"] },
+    { id: "changes", label: "Изменения", icon: "changes", dot: true, roles: ["admin", "uploader", "staff", "chief"] },
+    { id: "tasks", label: "Задания", icon: "clipboard", roles: ["admin", "uploader", "staff", "res", "chief"] },
   ]},
   { section: "Администрирование", items: [
     { id: "upload", label: "Загрузка", icon: "upload", roles: ["admin", "uploader"] },
@@ -152,7 +152,7 @@ async function boot() {
   renderNav(); openTab("dashboard");
   markChangesDot();
 }
-function roleName(r) { return { admin: "администратор", uploader: "загрузчик", staff: "служба учёта", res: "участок" }[r] || r; }
+function roleName(r) { return { admin: "администратор", uploader: "загрузчик", staff: "служба учёта", res: "участок", chief: "начальник" }[r] || r; }
 function onResChange() { RES = $("resFilter").value; openTab(currentTab); }
 let currentTab = "dashboard";
 
@@ -498,7 +498,8 @@ function userModal(u) {
     <label>Email (для входа через Платформу / Keycloak)</label><input id="u_email" type="email" value="${u ? esc(u.email || "") : ""}" placeholder="user@example.ru">
     <label>Роль</label><select id="u_role">
       <option value="admin">Администратор</option><option value="uploader">Админ-загрузчик</option>
-      <option value="staff">Служба учёта</option><option value="res">Участок (РЭС)</option></select>
+      <option value="staff">Служба учёта</option><option value="chief">Начальник (просмотр)</option>
+      <option value="res">Участок (РЭС)</option></select>
     <label>РЭС (для роли «участок»)</label><select id="u_res"><option value="">—</option>${resList.map(r => `<option>${esc(r)}</option>`).join("")}</select>
     <label>Пароль ${u ? "(пусто — не менять)" : ""}</label><input id="u_pass" type="password">
     ${u ? `<label><input type="checkbox" id="u_active" ${u.active ? "checked" : ""}> Активен</label>` : ""}

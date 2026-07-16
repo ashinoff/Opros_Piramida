@@ -294,7 +294,11 @@ def res_list(user: User = Depends(me), db=Depends(db_session)):
     forced = auth.visible_res(user)
     if forced:
         return [forced]
-    return [r[0] for r in db.query(Meter.res).distinct().order_by(Meter.res)]
+    # 7 стандартных РЭС (для назначения учёток до первой выгрузки) + реально
+    # встретившиеся в загруженных ПУ; объединяем и сортируем по алфавиту.
+    from .db import STANDARD_RES
+    actual = {r[0] for r in db.query(Meter.res).distinct() if r[0]}
+    return sorted(set(STANDARD_RES) | actual)
 
 
 # ---------------- Задания ----------------

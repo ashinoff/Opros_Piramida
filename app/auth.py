@@ -119,6 +119,9 @@ def resolve_platform_user(request: Request) -> User:
             if user is not None and not user.keycloak_id:
                 user.keycloak_id = kc_id
                 db.commit()
+                # commit при expire_on_commit=True обесценивает атрибуты — перечитываем,
+                # иначе после expunge/close будет DetachedInstanceError в _user_dict.
+                db.refresh(user)
                 logger.info("Platform SSO: linked local user id=%s to keycloak identity", user.id)
         if user is None:
             logger.info("Platform SSO 401: no local user matched by keycloak_id or email")

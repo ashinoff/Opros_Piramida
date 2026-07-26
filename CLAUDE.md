@@ -24,6 +24,7 @@
 | `DATA_DIR` | каталог для копий загруженных xlsx (default `/data`, на Амвере постоянный диск) |
 | `ADMIN_PASSWORD` | пароль admin при первом старте (default `admin`) |
 | `MAX_UPLOAD_MB` | лимит размера загрузки (default 50) |
+| `INTEGRATION_API_KEY` | ключ машинного API `GET /api/integration/meters` (заголовок `X-Api-Key`). Не задан → endpoint отвечает `503`, остальное приложение работает как раньше. Тот же ключ прописывается в `OPROS_API_KEY` у «Мониторинга напряжения» |
 
 ## Структура кода
 
@@ -137,6 +138,22 @@ id `opros`, иконка `OprosTile` в `appIcons.jsx`). Домен Amvera:
 
 ## Журнал изменений
 
+- **2026-07-26** — Машинный integration-endpoint для «Мониторинга напряжения»
+  (res-management). `GET /api/integration/meters`, авторизация ТОЛЬКО по заголовку
+  `X-Api-Key` (constant-time `secrets.compare_digest` с `INTEGRATION_API_KEY`);
+  неверный/отсутствующий ключ → 401, ключ не задан в env → 503 «интеграция не
+  настроена» (приложение при этом стартует). Куки/Keycloak не участвуют — роут не
+  зовёт `me()`, а единственный `@app.middleware("http")` (`_frame_ancestors`) ставит
+  только CSP-заголовок и редиректов не делает. Выборка одним запросом: `Meter.active`
+  + LEFT JOIN `MeterState` последней успешной загрузки (`Upload.status=="done"`, max
+  id) для `collected`; нет состояния → 0; нет успешных загрузок → `{snapshot_at:null,
+  upload_id:null, count:0, meters:[]}`. Контракт (менять формат нельзя): `{snapshot_at,
+  upload_id, count, meters:[[serial, spodes01, collected01], ...]}`, serial строкой как
+  в БД (нормализует потребитель). Подключён `GZipMiddleware(minimum_size=1000)` (ответ
+  на ~130к ПУ иначе мегабайты). Новая env `INTEGRATION_API_KEY` (`config.py`). Импорт/
+  дифф/отчёты/роли не тронуты. ⚠️ После деплоя: задать `INTEGRATION_API_KEY` в env
+  Опроса на Амвере и «Пересобрать»; тот же ключ в `OPROS_API_KEY` (+`OPROS_URL`) у
+  «Мониторинга», пересобрать и его.
 - **2026-07-16** — Правки дизайна/аналитики (пакет). (1) Убрана заливка активного
   пункта меню — осталась только тонкая линия слева (`.nav-item.active`); у
   KPI-карточек убрана цветная полоса слева (`.kpi::before` удалён) — только

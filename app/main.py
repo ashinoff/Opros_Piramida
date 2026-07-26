@@ -11,9 +11,11 @@ import threading
 import time
 import urllib.parse
 from datetime import datetime
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Body
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Body, Header
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
+from sqlalchemy import and_
 
 from .db import init_db, SessionLocal, User, Upload, Meter, MeterState, Change, Task, DATA_DIR
 from . import auth, analytics, export, config
@@ -22,6 +24,8 @@ from .importer import run_import
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "50"))
 
 app = FastAPI(title="Опрос ПУ", docs_url=None, redoc_url=None)
+# Ответ integration-endpoint на ~130 тыс. ПУ без сжатия — мегабайты.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 init_db()
 auth.ensure_admin_exists()
 
@@ -86,6 +90,44 @@ def platform_login(request: Request):
     resp = JSONResponse({"token": token, "user": _user_dict(user)})
     resp.set_cookie("session", token, httponly=True, samesite="lax", max_age=12 * 3600)
     return resp
+
+
+# ---------------- Машинный integration-API ----------------
+@app.get("/api/integration/meters")
+def integration_meters(x_api_key: str = Header(None, alias="X-Api-Key")):
+    """Срез реестра ПУ для «Мониторинга напряжения» (res-management).
+
+    Авторизация ТОЛЬКО по заголовку X-Api-Key (constant-time сравнение с
+    INTEGRATION_API_KEY). Сессии/Keycloak/куки не участвуют. Ответ:
+      {snapshot_at, upload_id, count, meters: [[serial, spodes01, collected01], ...]}
+    serial — как в БД, без нормализации (её делает потребитель)."""
+    key = config.INTEGRATION_API_KEY
+    if not key:
+        raise HTTPException(503, "интеграция не настроена")
+    if not x_api_key or not secrets.compare_digest(x_api_key, key):
+        raise HTTPException(401, "неверный ключ")
+
+    db = SessionLocal()
+    try:
+        up = (db.query(Upload)
+              .filter(Upload.status == "done")
+              .order_by(Upload.id.desc()).first())
+        if up is None:
+            return {"snapshot_at": None, "upload_id": None, "count": 0, "meters": []}
+        rows = (db.query(Meter.serial, Meter.is_spodes, MeterState.collected)
+                .outerjoin(MeterState, and_(MeterState.meter_id == Meter.id,
+                                            MeterState.upload_id == up.id))
+                .filter(Meter.active == True).all())  # noqa: E712
+        meters = [[serial, 1 if is_spodes else 0, 1 if collected else 0]
+                  for serial, is_spodes, collected in rows]
+        return {
+            "snapshot_at": up.uploaded_at.isoformat() if up.uploaded_at else None,
+            "upload_id": up.id,
+            "count": len(meters),
+            "meters": meters,
+        }
+    finally:
+        db.close()
 
 
 def _user_dict(u: User):

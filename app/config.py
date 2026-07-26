@@ -29,3 +29,7 @@ OPROS_ACCESS_ROLE = os.environ.get("OPROS_ACCESS_ROLE", "opros-user")
 # Origin Платформы, которой разрешено встраивать приложение в iframe
 # (CSP frame-ancestors) и от которой принимаем postMessage с токеном.
 PLATFORM_ORIGIN = os.environ.get("PLATFORM_ORIGIN", "https://sue-system-ashinoff.amvera.io")
+
+# Ключ машинного integration-API (GET /api/integration/meters) — «Мониторинг
+# напряжения» забирает срез реестра ПУ. Не задан → endpoint отвечает 503.
+INTEGRATION_API_KEY = os.environ.get("INTEGRATION_API_KEY", "").strip()

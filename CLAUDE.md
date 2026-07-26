@@ -138,6 +138,18 @@ id `opros`, иконка `OprosTile` в `appIcons.jsx`). Домен Amvera:
 
 ## Журнал изменений
 
+- **2026-07-27** — `GET /api/integration/meters` — переход на 5-польный формат
+  (потребитель «Мониторинг» задеплоен и принимает элементы длиной 3 или 5).
+  Элемент `meters` теперь `[serial, spodes01, collected01, tp, tu_path]`: в тот же
+  один join-запрос добавлены `Meter.tp` (кол. L) и `Meter.tu_path` (кол. H); пустые
+  → `null` (`tp or None`). В ответ добавлено `"format": 2` (информационно; ветка
+  «нет успешных загрузок» тоже отдаёт `format:2` + пустой `meters`). Авторизация
+  (401 нет/неверный X-Api-Key, 503 при пустом `INTEGRATION_API_KEY`) и `GZipMiddleware`
+  не менялись. Проверено TestClient на засеянных данных: элементы из 5 полей,
+  пустой tp/tu_path→null, сподэс-без-состояния→collected 0, 401/503-ветки прежние,
+  GZip сжимает тело >1КБ. py_compile — ОК. ⚠️ После деплоя: «Пересобрать» Опрос,
+  затем в «Мониторинге» нажать «Синхронизировать» — кандидаты СПОДЭС и адреса
+  появятся в модалках «Карты опроса».
 - **2026-07-26** — Машинный integration-endpoint для «Мониторинга напряжения»
   (res-management). `GET /api/integration/meters`, авторизация ТОЛЬКО по заголовку
   `X-Api-Key` (constant-time `secrets.compare_digest` с `INTEGRATION_API_KEY`);

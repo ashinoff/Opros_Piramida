@@ -99,11 +99,12 @@ def integration_meters(x_api_key: str = Header(None, alias="X-Api-Key")):
 
     Авторизация ТОЛЬКО по заголовку X-Api-Key (constant-time сравнение с
     INTEGRATION_API_KEY). Сессии/Keycloak/куки не участвуют. Ответ:
-      {format: 2, snapshot_at, upload_id, count,
-       meters: [[serial, spodes01, collected01, tp, tu_path], ...]}
-    serial/tp/tu_path — как в БД, без нормализации (её делает потребитель);
-    tp/tu_path = null, если пусто. Формат обратно совместим: потребитель
-    принимает элементы длиной 3 или 5."""
+      {format: 3, snapshot_at, upload_id, count,
+       meters: [[serial, spodes01, collected01, tp, tu_path, type], ...]}
+    serial/tp/tu_path/type — как в БД, без нормализации (её делает потребитель);
+    tp/tu_path/type = null, если пусто. type — «Тип ПУ» (нужен потребителю, чтобы
+    определить РиМ: журнал напряжений доступен для СПОДЭС и РиМ). Формат обратно
+    совместим: потребитель принимает элементы длиной 3, 5 или 6."""
     key = config.INTEGRATION_API_KEY
     if not key:
         raise HTTPException(503, "интеграция не настроена")
@@ -116,17 +117,17 @@ def integration_meters(x_api_key: str = Header(None, alias="X-Api-Key")):
               .filter(Upload.status == "done")
               .order_by(Upload.id.desc()).first())
         if up is None:
-            return {"format": 2, "snapshot_at": None, "upload_id": None, "count": 0, "meters": []}
+            return {"format": 3, "snapshot_at": None, "upload_id": None, "count": 0, "meters": []}
         rows = (db.query(Meter.serial, Meter.is_spodes, MeterState.collected,
-                         Meter.tp, Meter.tu_path)
+                         Meter.tp, Meter.tu_path, Meter.type_name)
                 .outerjoin(MeterState, and_(MeterState.meter_id == Meter.id,
                                             MeterState.upload_id == up.id))
                 .filter(Meter.active == True).all())  # noqa: E712
         meters = [[serial, 1 if is_spodes else 0, 1 if collected else 0,
-                   tp or None, tu_path or None]
-                  for serial, is_spodes, collected, tp, tu_path in rows]
+                   tp or None, tu_path or None, type_name or None]
+                  for serial, is_spodes, collected, tp, tu_path, type_name in rows]
         return {
-            "format": 2,
+            "format": 3,
             "snapshot_at": up.uploaded_at.isoformat() if up.uploaded_at else None,
             "upload_id": up.id,
             "count": len(meters),
